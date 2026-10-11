@@ -1,0 +1,28 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "multi-business-billing",
+          "appId": "1:369282112816:android:e10378a78fa4cbc7c3fcf5",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "multi-business-billing",
+          "configurations": {
+            "android": "1:369282112816:android:e10378a78fa4cbc7c3fcf5",
+            "ios": "1:369282112816:ios:902394a9e4006171c3fcf5",
+            "macos": "1:369282112816:ios:902394a9e4006171c3fcf5",
+            "web": "1:369282112816:web:ca1225c8ccc8ef98c3fcf5",
+            "windows": "1:369282112816:web:2a071577d448d949c3fcf5"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}
