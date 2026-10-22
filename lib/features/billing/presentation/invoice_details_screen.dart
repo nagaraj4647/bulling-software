@@ -2,9 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import 'package:printing/printing.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+
 import '../../../core/utils/error_formatter.dart';
+import '../../business/models/business_model.dart';
+import '../../business/providers/business_provider.dart';
 import '../providers/billing_provider.dart';
 import '../models/invoice_model.dart';
+import '../services/invoice_pdf_service.dart';
 
 class InvoiceDetailsScreen extends ConsumerWidget {
   final String invoiceId;
@@ -71,6 +77,7 @@ class InvoiceDetailsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final paginatedState = ref.watch(paginatedInvoicesProvider);
     final isCancelling = ref.watch(billingControllerProvider).isLoading;
+    final business = ref.watch(currentBusinessProvider).value;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Invoice Details')),
@@ -110,6 +117,9 @@ class InvoiceDetailsScreen extends ConsumerWidget {
                 const SizedBox(height: 16),
                 _buildTotalsCard(context, invoice),
                 const SizedBox(height: 16),
+                _buildUpiQrCard(context, business, invoice),
+                _buildBillActions(context, business, invoice),
+                const SizedBox(height: 8),
                 if (isConfirmed)
                   FilledButton.icon(
                     style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -360,4 +370,127 @@ class InvoiceDetailsScreen extends ConsumerWidget {
       ),
     );
   }
+
+  Widget _buildUpiQrCard(
+    BuildContext context,
+    BusinessModel? business,
+    InvoiceModel invoice,
+  ) {
+    final upiId = business?.upiId;
+    if (upiId == null || upiId.isEmpty) return const SizedBox.shrink();
+    if (invoice.payment.balanceAmount <= 0) return const SizedBox.shrink();
+    final amount = InvoicePdfService.qrAmount(invoice);
+    final link = InvoicePdfService.buildUpiLink(
+      upiId: upiId,
+      payeeName: business!.businessName,
+      amount: amount,
+      note: invoice.invoiceNumber,
+    );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Text(
+              'Scan to Pay - UPI',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            QrImageView(data: link, version: QrVersions.auto, size: 180),
+            const SizedBox(height: 8),
+            Text(
+              '\u20B9${amount.toStringAsFixed(2)} - $upiId',
+              style: const TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBillActions(
+    BuildContext context,
+    BusinessModel? business,
+    InvoiceModel invoice,
+  ) {
+    final fileName =
+        '${invoice.invoiceNumber.isNotEmpty ? invoice.invoiceNumber : 'invoice'}.pdf';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () =>
+                    _runPdfAction(context, () async {
+                      final bytes = await InvoicePdfService.buildInvoicePdf(
+                        invoice: invoice,
+                        business: business,
+                      );
+                      await Printing.sharePdf(
+                        bytes: bytes,
+                        filename: fileName,
+                      );
+                    }),
+                icon: const Icon(Icons.share),
+                label: const Text('Share Bill'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () =>
+                    _runPdfAction(context, () async {
+                      await Printing.layoutPdf(
+                        name: fileName,
+                        onLayout: (_) => InvoicePdfService.buildInvoicePdf(
+                          invoice: invoice,
+                          business: business,
+                        ),
+                      );
+                    }),
+                icon: const Icon(Icons.print),
+                label: const Text('Print A4'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () =>
+              _runPdfAction(context, () async {
+                await Printing.layoutPdf(
+                  name: fileName,
+                  onLayout: (_) => InvoicePdfService.buildInvoicePdf(
+                    invoice: invoice,
+                    business: business,
+                    thermal: true,
+                  ),
+                );
+              }),
+          icon: const Icon(Icons.receipt_long),
+          label: const Text('Thermal Print (80mm)'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _runPdfAction(
+    BuildContext context,
+    Future<void> Function() action,
+  ) async {
+    try {
+      await action();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
 }
+

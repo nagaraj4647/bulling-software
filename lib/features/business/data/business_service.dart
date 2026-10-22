@@ -48,6 +48,7 @@ class BusinessService {
       'address': business.address,
       'businessState': business.businessState,
       'gstNumber': business.gstNumber,
+      'upiId': business.upiId,
       'isGstInclusive': business.isGstInclusive,
       if (business.logoUrl != null) 'logoUrl': business.logoUrl,
       'sampleProductsSeeded': business.sampleProductsSeeded,

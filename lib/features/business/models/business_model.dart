@@ -11,6 +11,7 @@ class BusinessModel {
   final String address;
   final String? businessState;
   final String? gstNumber;
+  final String? upiId;
   final bool isGstInclusive;
   final String? logoUrl;
   final DateTime? createdAt;
@@ -28,6 +29,7 @@ class BusinessModel {
     required this.address,
     this.businessState,
     this.gstNumber,
+    this.upiId,
     this.isGstInclusive = false,
     this.logoUrl,
     this.createdAt,
@@ -55,6 +57,7 @@ class BusinessModel {
       address: data['address'] as String,
       businessState: data['businessState'] as String?,
       gstNumber: data['gstNumber'] as String?,
+      upiId: data['upiId'] as String?,
       isGstInclusive: data['isGstInclusive'] as bool? ?? false,
       logoUrl: data['logoUrl'] as String?,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
@@ -95,6 +98,7 @@ class BusinessModel {
     String? address,
     String? businessState,
     String? gstNumber,
+    String? upiId,
     bool? isGstInclusive,
     String? logoUrl,
     DateTime? createdAt,
@@ -112,6 +116,7 @@ class BusinessModel {
       address: address ?? this.address,
       businessState: businessState ?? this.businessState,
       gstNumber: gstNumber ?? this.gstNumber,
+      upiId: upiId ?? this.upiId,
       isGstInclusive: isGstInclusive ?? this.isGstInclusive,
       logoUrl: logoUrl ?? this.logoUrl,
       createdAt: createdAt ?? this.createdAt,
