@@ -193,24 +193,27 @@ class _NewInvoiceScreenState extends ConsumerState<NewInvoiceScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Total (${cartState.items.length} items)',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.outline,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Total (${cartState.items.length} items)',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.outline,
+                        ),
                       ),
-                    ),
-                    Text(
-                      '₹${invoice.grandTotal.toStringAsFixed(2)}',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.primary,
+                      Text(
+                        '₹${invoice.grandTotal.toStringAsFixed(2)}',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.primary,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 12),
                 FilledButton.icon(
                   onPressed: () => _showMobileCartBottomSheet(
                     cartState,
@@ -218,12 +221,12 @@ class _NewInvoiceScreenState extends ConsumerState<NewInvoiceScreen> {
                     isLoading,
                     theme,
                   ),
-                  icon: const Icon(Icons.shopping_cart_checkout),
-                  label: const Text('View Cart & Pay'),
+                  icon: const Icon(Icons.shopping_cart_checkout, size: 20),
+                  label: const Text('View Cart'),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 16,
+                      horizontal: 18,
+                      vertical: 14,
                     ),
                     backgroundColor: AppTheme.success,
                   ),
@@ -405,21 +408,24 @@ class _NewInvoiceScreenState extends ConsumerState<NewInvoiceScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        title: Text(
-                          'GST Inclusive Prices',
-                          style: theme.textTheme.titleSmall,
+                      Material(
+                        color: Colors.transparent,
+                        child: SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          title: Text(
+                            'GST Inclusive Prices',
+                            style: theme.textTheme.titleSmall,
+                          ),
+                          value: _isGstInclusive,
+                          activeColor: theme.colorScheme.primary,
+                          onChanged: (val) {
+                            setState(() => _isGstInclusive = val);
+                            ref
+                                .read(cartProvider.notifier)
+                                .setIsGstInclusive(val);
+                          },
                         ),
-                        value: _isGstInclusive,
-                        activeColor: theme.colorScheme.primary,
-                        onChanged: (val) {
-                          setState(() => _isGstInclusive = val);
-                          ref
-                              .read(cartProvider.notifier)
-                              .setIsGstInclusive(val);
-                        },
                       ),
                       const SizedBox(height: 4),
                       _buildAnimatedAmountRow(
@@ -668,13 +674,16 @@ class _NewInvoiceScreenState extends ConsumerState<NewInvoiceScreen> {
           const SizedBox(height: 8),
           Row(
             children: [
-              Text(
-                '\u20B9${item.product.sellingPrice.toStringAsFixed(2)} / ${item.product.unit ?? 'unit'}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.outline,
+              Expanded(
+                child: Text(
+                  '\u20B9${item.product.sellingPrice.toStringAsFixed(2)} / ${item.product.unit ?? 'unit'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
                 ),
               ),
-              const Spacer(),
               _QuantityButton(
                 icon: Icons.remove,
                 onTap: () => ref
@@ -701,7 +710,7 @@ class _NewInvoiceScreenState extends ConsumerState<NewInvoiceScreen> {
               ),
               const SizedBox(width: 12),
               SizedBox(
-                width: 84,
+                width: 72,
                 child: Text(
                   '\u20B9${lineTotal.toStringAsFixed(2)}',
                   textAlign: TextAlign.end,
