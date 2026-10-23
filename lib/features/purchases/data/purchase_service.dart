@@ -497,24 +497,46 @@ class PurchaseService {
       query = query.where('createdAt', isLessThan: Timestamp.fromDate(endDate));
     }
 
-    query = query.orderBy('createdAt', descending: true);
+    final baseQuery = query.orderBy('createdAt', descending: true);
 
-    if (startAfter != null) {
-      query = query.startAfterDocument(startAfter);
+    // Status is filtered client-side, so keep fetching raw pages until
+    // `limit` matching docs are collected or the range is exhausted.
+    final List<QueryDocumentSnapshot<PurchaseModel>> filtered = [];
+    DocumentSnapshot<PurchaseModel>? cursor =
+        startAfter as DocumentSnapshot<PurchaseModel>?;
+    var hasMore = true;
+
+    while (filtered.length < limit) {
+      var pageQuery = baseQuery;
+      if (cursor != null) {
+        pageQuery = pageQuery.startAfterDocument(cursor);
+      }
+      final snapshot = await pageQuery.limit(limit + 1).get();
+      if (snapshot.docs.isEmpty) {
+        hasMore = false;
+        break;
+      }
+      final rawHasMore = snapshot.docs.length > limit;
+      final pageDocs = rawHasMore
+          ? snapshot.docs.sublist(0, limit)
+          : snapshot.docs;
+      cursor = pageDocs.last;
+      if (statusFilter == null) {
+        filtered.addAll(pageDocs);
+      } else {
+        filtered.addAll(
+          pageDocs.where((d) => d.data().status == statusFilter),
+        );
+      }
+      if (!rawHasMore) {
+        hasMore = false;
+        break;
+      }
     }
-
-    query = query.limit(limit + 1);
-
-    final snapshot = await query.get();
-    final hasMore = snapshot.docs.length > limit;
-    final docs = hasMore ? snapshot.docs.sublist(0, limit) : snapshot.docs;
-    final filtered = statusFilter == null
-        ? docs
-        : docs.where((d) => d.data().status == statusFilter).toList();
 
     return {
       'purchases': filtered.map((d) => d.data()).toList(),
-      'lastDocument': docs.isNotEmpty ? docs.last : null,
+      'lastDocument': cursor,
       'hasMore': hasMore,
     };
   }

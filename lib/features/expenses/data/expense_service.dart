@@ -134,19 +134,16 @@ class ExpenseService {
       );
     }
 
-    query = query.orderBy('expenseDate', descending: true);
+    final baseQuery = query.orderBy('expenseDate', descending: true);
 
-    if (startAfter != null) {
-      query = query.startAfterDocument(startAfter);
-    }
+    // Status/category are filtered client-side, so keep fetching raw pages
+    // until `limit` matching docs are collected or the range is exhausted.
+    final List<QueryDocumentSnapshot<ExpenseModel>> filtered = [];
+    DocumentSnapshot<ExpenseModel>? cursor =
+        startAfter as DocumentSnapshot<ExpenseModel>?;
+    var hasMore = true;
 
-    query = query.limit(limit + 1);
-
-    final snapshot = await query.get();
-    final hasMore = snapshot.docs.length > limit;
-    final docs = hasMore ? snapshot.docs.sublist(0, limit) : snapshot.docs;
-    final filtered = docs.where((d) {
-      final expense = d.data();
+    bool matches(ExpenseModel expense) {
       if (statusFilter != null && expense.status != statusFilter) {
         return false;
       }
@@ -154,11 +151,33 @@ class ExpenseService {
         return false;
       }
       return true;
-    }).toList();
+    }
+
+    while (filtered.length < limit) {
+      var pageQuery = baseQuery;
+      if (cursor != null) {
+        pageQuery = pageQuery.startAfterDocument(cursor);
+      }
+      final snapshot = await pageQuery.limit(limit + 1).get();
+      if (snapshot.docs.isEmpty) {
+        hasMore = false;
+        break;
+      }
+      final rawHasMore = snapshot.docs.length > limit;
+      final pageDocs = rawHasMore
+          ? snapshot.docs.sublist(0, limit)
+          : snapshot.docs;
+      cursor = pageDocs.last;
+      filtered.addAll(pageDocs.where((d) => matches(d.data())));
+      if (!rawHasMore) {
+        hasMore = false;
+        break;
+      }
+    }
 
     return {
       'expenses': filtered.map((d) => d.data()).toList(),
-      'lastDocument': docs.isNotEmpty ? docs.last : null,
+      'lastDocument': cursor,
       'hasMore': hasMore,
     };
   }
