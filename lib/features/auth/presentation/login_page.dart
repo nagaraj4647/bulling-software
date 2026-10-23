@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/app_logo.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -92,15 +93,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                       children: [
                         // Logo
                         Center(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(18),
-                            child: Image.asset(
-                              'assets/icon/new_logo.png',
-                              width: 80,
-                              height: 80,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
+                          child: AppLogo(size: 80),
                         ),
                         const SizedBox(height: 24),
                         Text(

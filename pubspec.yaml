@@ -81,6 +81,7 @@ flutter:
     - assets/icon/
     - assets/icon/app_logo.jpg
     - assets/icon/new_logo.png
+    - assets/icon/mj_mark.png
 
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a
