@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/error_formatter.dart';
 import '../../business/models/business_model.dart';
 import '../../business/providers/business_provider.dart';
@@ -165,13 +166,33 @@ class InvoiceDetailsScreen extends ConsumerWidget {
                   style: Theme.of(context).textTheme.headlineSmall
                       ?.copyWith(fontWeight: FontWeight.bold),
                 ),
-                Chip(
-                  label: Text(invoice.status.name.toUpperCase()),
-                  backgroundColor: invoice.status == InvoiceStatus.confirmed
-                      ? Colors.green[100]
-                      : (invoice.status == InvoiceStatus.cancelled
-                            ? Colors.red[100]
-                            : Colors.grey[200]),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        (invoice.status == InvoiceStatus.confirmed
+                                ? AppTheme.confirmed
+                                : (invoice.status == InvoiceStatus.cancelled
+                                      ? AppTheme.cancelled
+                                      : AppTheme.draft))
+                            .withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    invoice.status.name.toUpperCase(),
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: invoice.status == InvoiceStatus.confirmed
+                          ? AppTheme.confirmed
+                          : (invoice.status == InvoiceStatus.cancelled
+                                ? AppTheme.cancelled
+                                : AppTheme.draft),
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -214,9 +235,13 @@ class InvoiceDetailsScreen extends ConsumerWidget {
               ),
               if (invoice.customerSnapshot!.phone != null)
                 Text('Ph: ${invoice.customerSnapshot!.phone}'),
-              if (invoice.customerSnapshot!.city != null)
+              if ((invoice.customerSnapshot!.address ?? '').isNotEmpty ||
+                  (invoice.customerSnapshot!.city ?? '').isNotEmpty)
                 Text(
-                  '${invoice.customerSnapshot!.address ?? ''}, ${invoice.customerSnapshot!.city}',
+                  [
+                    invoice.customerSnapshot!.address ?? '',
+                    invoice.customerSnapshot!.city ?? '',
+                  ].where((s) => s.isNotEmpty).join(', '),
                 ),
               if (invoice.customerSnapshot!.gstNumber != null)
                 Text('GSTIN: ${invoice.customerSnapshot!.gstNumber}'),
@@ -339,18 +364,53 @@ class InvoiceDetailsScreen extends ConsumerWidget {
                 ),
               ],
             ),
-            const Divider(),
-            _buildAmountRow(
-              'Paid (${invoice.payment.paymentMethod})',
-              invoice.payment.paidAmount,
-              color: Colors.blue,
-            ),
-            _buildAmountRow(
-              'Balance Due',
-              invoice.payment.balanceAmount,
-              color: invoice.payment.balanceAmount > 0
-                  ? Colors.red
-                  : Colors.green,
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: invoice.payment.balanceAmount > 0
+                    ? AppTheme.unpaid.withOpacity(0.08)
+                    : AppTheme.paid.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(AppTheme.radiusM),
+              ),
+              child: Column(
+                children: [
+                  _buildAmountRow(
+                    'Paid (${invoice.payment.paymentMethod})',
+                    invoice.payment.paidAmount,
+                    color: AppTheme.paid,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        invoice.payment.balanceAmount > 0
+                            ? 'Balance Due'
+                            : 'Fully Paid',
+                        style: TextStyle(
+                          color: invoice.payment.balanceAmount > 0
+                              ? AppTheme.unpaid
+                              : AppTheme.paid,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        invoice.payment.balanceAmount > 0
+                            ? '\u20B9${invoice.payment.balanceAmount.toStringAsFixed(2)}'
+                            : '\u2713',
+                        style: TextStyle(
+                          color: invoice.payment.balanceAmount > 0
+                              ? AppTheme.unpaid
+                              : AppTheme.paid,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -393,9 +453,8 @@ class InvoiceDetailsScreen extends ConsumerWidget {
           children: [
             Text(
               'Scan to Pay - UPI',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             QrImageView(data: link, version: QrVersions.auto, size: 180),
@@ -424,17 +483,13 @@ class InvoiceDetailsScreen extends ConsumerWidget {
           children: [
             Expanded(
               child: FilledButton.icon(
-                onPressed: () =>
-                    _runPdfAction(context, () async {
-                      final bytes = await InvoicePdfService.buildInvoicePdf(
-                        invoice: invoice,
-                        business: business,
-                      );
-                      await Printing.sharePdf(
-                        bytes: bytes,
-                        filename: fileName,
-                      );
-                    }),
+                onPressed: () => _runPdfAction(context, () async {
+                  final bytes = await InvoicePdfService.buildInvoicePdf(
+                    invoice: invoice,
+                    business: business,
+                  );
+                  await Printing.sharePdf(bytes: bytes, filename: fileName);
+                }),
                 icon: const Icon(Icons.share),
                 label: const Text('Share Bill'),
               ),
@@ -442,16 +497,15 @@ class InvoiceDetailsScreen extends ConsumerWidget {
             const SizedBox(width: 12),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: () =>
-                    _runPdfAction(context, () async {
-                      await Printing.layoutPdf(
-                        name: fileName,
-                        onLayout: (_) => InvoicePdfService.buildInvoicePdf(
-                          invoice: invoice,
-                          business: business,
-                        ),
-                      );
-                    }),
+                onPressed: () => _runPdfAction(context, () async {
+                  await Printing.layoutPdf(
+                    name: fileName,
+                    onLayout: (_) => InvoicePdfService.buildInvoicePdf(
+                      invoice: invoice,
+                      business: business,
+                    ),
+                  );
+                }),
                 icon: const Icon(Icons.print),
                 label: const Text('Print A4'),
               ),
@@ -460,17 +514,16 @@ class InvoiceDetailsScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
-          onPressed: () =>
-              _runPdfAction(context, () async {
-                await Printing.layoutPdf(
-                  name: fileName,
-                  onLayout: (_) => InvoicePdfService.buildInvoicePdf(
-                    invoice: invoice,
-                    business: business,
-                    thermal: true,
-                  ),
-                );
-              }),
+          onPressed: () => _runPdfAction(context, () async {
+            await Printing.layoutPdf(
+              name: fileName,
+              onLayout: (_) => InvoicePdfService.buildInvoicePdf(
+                invoice: invoice,
+                business: business,
+                thermal: true,
+              ),
+            );
+          }),
           icon: const Icon(Icons.receipt_long),
           label: const Text('Thermal Print (80mm)'),
         ),
@@ -487,10 +540,12 @@ class InvoiceDetailsScreen extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PDF failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('PDF failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
   }
 }
-
