@@ -1,14 +1,26 @@
+/// One calendar day's confirmed sales total, used by the sales trend charts.
+class DailySalesPoint {
+  final DateTime day;
+  final double total;
+
+  const DailySalesPoint({required this.day, required this.total});
+}
+
 class SalesReportSummary {
   final double totalSales;
   final int invoiceCount;
   final double taxTotal;
   final double discountTotal;
 
+  /// Confirmed sales bucketed per calendar day across the queried range.
+  final List<DailySalesPoint> dailyTotals;
+
   SalesReportSummary({
     this.totalSales = 0.0,
     this.invoiceCount = 0,
     this.taxTotal = 0.0,
     this.discountTotal = 0.0,
+    this.dailyTotals = const [],
   });
 }
 

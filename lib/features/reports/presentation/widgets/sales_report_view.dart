@@ -1,10 +1,13 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../../../../core/utils/chart_format.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../models/report_models.dart';
 import '../../providers/reports_provider.dart';
 import 'report_pagination_footer.dart';
 
@@ -81,7 +84,7 @@ class SalesReportView extends ConsumerWidget {
                     const SizedBox(height: 24),
                     _buildChart(
                       context,
-                      summary.totalSales,
+                      summary,
                     ).animate().fade().scale(delay: 200.ms),
                   ],
                 ),
@@ -103,7 +106,7 @@ class SalesReportView extends ConsumerWidget {
     );
   }
 
-  Widget _buildChart(BuildContext context, double totalSales) {
+  Widget _buildChart(BuildContext context, SalesReportSummary summary) {
     final theme = Theme.of(context);
     return Card(
       elevation: 2,
@@ -118,117 +121,140 @@ class SalesReportView extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Sales Trend (Mocked Data)',
+              'Sales Trend',
               style: theme.textTheme.titleMedium,
             ),
             const SizedBox(height: 24),
             SizedBox(
               height: 200,
-              child: LineChart(
-                LineChartData(
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: 1,
-                    getDrawingHorizontalLine: (value) {
-                      return FlLine(
-                        color: theme.colorScheme.outlineVariant.withAlpha(30),
-                        strokeWidth: 1,
-                      );
-                    },
-                  ),
-                  titlesData: FlTitlesData(
-                    show: true,
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 30,
-                        interval: 1,
-                        getTitlesWidget: (value, meta) {
-                          const style = TextStyle(
-                            fontSize: 10,
-                            color: Colors.grey,
-                          );
-                          String text;
-                          switch (value.toInt()) {
-                            case 0:
-                              text = 'Mon';
-                              break;
-                            case 2:
-                              text = 'Wed';
-                              break;
-                            case 4:
-                              text = 'Fri';
-                              break;
-                            case 6:
-                              text = 'Sun';
-                              break;
-                            default:
-                              return Container();
-                          }
-                          return SideTitleWidget(
-                            meta: meta,
-                            child: Text(text, style: style),
-                          );
-                        },
-                      ),
-                    ),
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        interval: 1,
-                        getTitlesWidget: (value, meta) {
-                          if (value == 0) return Container();
-                          return Text(
-                            '${value.toInt()}k',
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey,
-                            ),
-                          );
-                        },
-                        reservedSize: 32,
-                      ),
-                    ),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  minX: 0,
-                  maxX: 6,
-                  minY: 0,
-                  maxY: 6,
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: const [
-                        FlSpot(0, 3),
-                        FlSpot(1, 2),
-                        FlSpot(2, 5),
-                        FlSpot(3, 3.1),
-                        FlSpot(4, 4),
-                        FlSpot(5, 3),
-                        FlSpot(6, 4),
-                      ],
-                      isCurved: true,
-                      color: AppTheme.salesColor,
-                      barWidth: 3,
-                      isStrokeCapRound: true,
-                      dotData: const FlDotData(show: false),
-                      belowBarData: BarAreaData(
-                        show: true,
-                        color: AppTheme.salesColor.withAlpha(30),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              child: _buildTrendChart(context, summary),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Real confirmed-sales trend for the selected report range. Daily buckets
+  /// come from the same Firestore fetch as the summary totals; ranges longer
+  /// than 62 days are grouped into weekly buckets.
+  Widget _buildTrendChart(BuildContext context, SalesReportSummary summary) {
+    final theme = Theme.of(context);
+    if (summary.invoiceCount == 0) {
+      return Center(
+        child: Text(
+          'No confirmed sales in this period',
+          style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey),
+        ),
+      );
+    }
+    final points = summary.dailyTotals;
+    if (points.isEmpty) {
+      return const Center(child: Text('Trend unavailable'));
+    }
+    final groupDays = points.length > 62 ? 7 : 1;
+    final grouped = <DailySalesPoint>[];
+    for (var i = 0; i < points.length; i += groupDays) {
+      final chunk = points.sublist(i, math.min(i + groupDays, points.length));
+      grouped.add(
+        DailySalesPoint(
+          day: chunk.first.day,
+          total: chunk.fold<double>(0, (sum, p) => sum + p.total),
+        ),
+      );
+    }
+    final maxTotal = grouped.fold<double>(
+      0,
+      (m, p) => math.max(m, p.total),
+    );
+    final maxY = niceCeil(maxTotal);
+    final labelEvery = math.max(1, (grouped.length / 6).ceil());
+    final dateFormat = DateFormat('d MMM');
+    return LineChart(
+      LineChartData(
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: maxY / 4,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(
+              color: theme.colorScheme.outlineVariant.withAlpha(30),
+              strokeWidth: 1,
+            );
+          },
+        ),
+        titlesData: FlTitlesData(
+          show: true,
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 30,
+              interval: 1,
+              getTitlesWidget: (value, meta) {
+                const style = TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey,
+                );
+                final i = value.toInt();
+                if (value != i.toDouble() ||
+                    i < 0 ||
+                    i >= grouped.length ||
+                    i % labelEvery != 0) {
+                  return const SizedBox();
+                }
+                return SideTitleWidget(
+                  meta: meta,
+                  child: Text(dateFormat.format(grouped[i].day), style: style),
+                );
+              },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              interval: maxY / 4,
+              reservedSize: 36,
+              getTitlesWidget: (value, meta) {
+                if (value == 0) return const SizedBox();
+                return Text(
+                  compactAmount(value),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey,
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        minX: 0,
+        maxX: math.max(1, grouped.length - 1).toDouble(),
+        minY: 0,
+        maxY: maxY,
+        lineBarsData: [
+          LineChartBarData(
+            spots: [
+              for (var i = 0; i < grouped.length; i++)
+                FlSpot(i.toDouble(), grouped[i].total),
+            ],
+            isCurved: true,
+            color: AppTheme.salesColor,
+            barWidth: 3,
+            isStrokeCapRound: true,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(
+              show: true,
+              color: AppTheme.salesColor.withAlpha(30),
+            ),
+          ),
+        ],
       ),
     );
   }

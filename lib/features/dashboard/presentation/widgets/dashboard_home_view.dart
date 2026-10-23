@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/chart_format.dart';
 import '../../../../core/widgets/app_empty_state.dart';
 import '../../../products/providers/product_provider.dart';
 import '../../../customers/providers/customer_provider.dart';
@@ -12,6 +14,8 @@ import '../../../billing/providers/billing_provider.dart';
 import '../../../purchases/providers/purchase_provider.dart';
 import '../../../expenses/providers/expense_provider.dart';
 import '../../../business/providers/business_provider.dart';
+import '../../../reports/models/report_models.dart';
+import '../../../reports/providers/reports_provider.dart';
 
 class DashboardHomeView extends ConsumerWidget {
   const DashboardHomeView({super.key});
@@ -82,7 +86,7 @@ class DashboardHomeView extends ConsumerWidget {
               .slideY(begin: 0.04, end: 0),
           const SizedBox(height: 28),
 
-          // Sales Chart (Mocked data for visual purposes)
+          // Sales Chart (real confirmed sales, trailing 7 days)
           const _SalesChart()
               .animate()
               .fade(duration: 450.ms, delay: 300.ms)
@@ -303,75 +307,74 @@ class DashboardHomeView extends ConsumerWidget {
               ),
             ],
           ),
-            const SizedBox(height: 12),
-            asyncInvoices.when(
-              loading: () => const Padding(
-                padding: EdgeInsets.all(32.0),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              ),
-              error: (err, stack) => const Padding(
-                padding: EdgeInsets.all(32.0),
-                child: Center(child: Text('Failed to load invoices')),
-              ),
-              data: (invoices) {
-                if (invoices.isEmpty) {
-                  return AppEmptyState(
-                    icon: Icons.receipt_outlined,
-                    title: 'No invoices yet',
-                    subtitle: 'Create your first invoice to start billing',
-                    actionLabel: 'Create Invoice',
-                    onAction: () => context.go('/billing/new'),
-                  );
-                }
-                return ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: invoices.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final invoice = invoices[index];
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 0,
-                        vertical: 8,
-                      ),
-                      leading: CircleAvatar(
-                        radius: 22,
-                        backgroundColor: theme.colorScheme.primaryContainer,
-                        child: Icon(
-                          Icons.receipt,
-                          color: theme.colorScheme.primary,
-                          size: 20,
-                        ),
-                      ),
-                      title: Text(
-                        invoice.customerSnapshot?.name ?? 'Walk-in Customer',
-                        style: theme.textTheme.titleSmall,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(
-                        invoice.invoiceNumber.isNotEmpty
-                            ? invoice.invoiceNumber
-                            : 'Draft',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.outline,
-                        ),
-                      ),
-                      trailing: Text(
-                        '₹${invoice.grandTotal.toStringAsFixed(2)}',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      onTap: () => context.go('/billing/${invoice.invoiceId}'),
-                    );
-                  },
-                );
-              },
+          const SizedBox(height: 12),
+          asyncInvoices.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.all(32.0),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ),
-          ],
-        ),
+            error: (err, stack) => const Padding(
+              padding: EdgeInsets.all(32.0),
+              child: Center(child: Text('Failed to load invoices')),
+            ),
+            data: (invoices) {
+              if (invoices.isEmpty) {
+                return AppEmptyState(
+                  icon: Icons.receipt_outlined,
+                  title: 'No invoices yet',
+                  subtitle: 'Create your first invoice to start billing',
+                  actionLabel: 'Create Invoice',
+                  onAction: () => context.go('/billing/new'),
+                );
+              }
+              return ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: invoices.length,
+                separatorBuilder: (context, index) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final invoice = invoices[index];
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 0,
+                      vertical: 8,
+                    ),
+                    leading: CircleAvatar(
+                      radius: 22,
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      child: Icon(
+                        Icons.receipt,
+                        color: theme.colorScheme.primary,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      invoice.customerSnapshot?.name ?? 'Walk-in Customer',
+                      style: theme.textTheme.titleSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      invoice.invoiceNumber.isNotEmpty
+                          ? invoice.invoiceNumber
+                          : 'Draft',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
+                    trailing: Text(
+                      'Rs.${invoice.grandTotal.toStringAsFixed(2)}',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    onTap: () => context.go('/billing/\${invoice.invoiceId}'),
+                  );
+                },
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -417,93 +420,46 @@ class DashboardHomeView extends ConsumerWidget {
                   color: AppTheme.warning,
                 ),
               ),
-                const SizedBox(width: 12),
-                Text('Low Stock Alerts', style: theme.textTheme.titleMedium),
-              ],
+              const SizedBox(width: 12),
+              Text('Low Stock Alerts', style: theme.textTheme.titleMedium),
+            ],
+          ),
+          const SizedBox(height: 16),
+          asyncProducts.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.all(32.0),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ),
-            const SizedBox(height: 16),
-            asyncProducts.when(
-              loading: () => const Padding(
-                padding: EdgeInsets.all(32.0),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              ),
-              error: (err, stack) => const Padding(
-                padding: EdgeInsets.all(32.0),
-                child: Center(child: Text('Failed to load products')),
-              ),
-              data: (products) {
-                if (products.isEmpty) {
-                  return Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.check_circle,
-                          color: AppTheme.success,
-                          size: 24,
+            error: (err, stack) => const Padding(
+              padding: EdgeInsets.all(32.0),
+              child: Center(child: Text('Failed to load products')),
+            ),
+            data: (products) {
+              if (products.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle,
+                        color: AppTheme.success,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'All products are well stocked',
+                          style: theme.textTheme.bodyMedium,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'All products are well stocked',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.outline,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                return ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: products.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final product = products[index];
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 0,
-                        vertical: 8,
                       ),
-                      title: Text(
-                        product.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall,
-                      ),
-                      subtitle: Row(
-                        children: [
-                          Text('Stock: ', style: theme.textTheme.bodySmall),
-                          Text(
-                            '${product.stockQuantity}',
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: AppTheme.error,
-                            ),
-                          ),
-                          Text(
-                            ' / Min: ${product.lowStockThreshold}',
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
-                      trailing: FilledButton.tonal(
-                        onPressed: () =>
-                            context.go('/products/edit/${product.productId}'),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        child: const Text('Update'),
-                      ),
-                    );
-                  },
+                    ],
+                  ),
                 );
-              },
-            ),
-          ],
-        ),
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        ],
       ),
     );
   }
@@ -950,13 +906,14 @@ class _QuickActionChipState extends State<_QuickActionChip> {
   }
 }
 
-class _SalesChart extends StatelessWidget {
+class _SalesChart extends ConsumerWidget {
   const _SalesChart();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final trendAsync = ref.watch(dashboardWeeklySalesTrendProvider);
 
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
     final borderColor = isDark
@@ -1012,135 +969,130 @@ class _SalesChart extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-            SizedBox(
-              height: 250,
-              child: LineChart(
-                LineChartData(
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: 1,
-                    getDrawingHorizontalLine: (value) {
-                      return FlLine(
-                        color: theme.colorScheme.outlineVariant.withOpacity(
-                          0.2,
-                        ),
-                        strokeWidth: 1,
-                        dashArray: [5, 5],
-                      );
-                    },
+          SizedBox(
+            height: 250,
+            child: trendAsync.when(
+              data: (points) => _buildTrend(context, points),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, _) => Center(
+                child: Text(
+                  'Could not load sales trend',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
                   ),
-                  titlesData: FlTitlesData(
-                    show: true,
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 30,
-                        interval: 1,
-                        getTitlesWidget: (value, meta) {
-                          const style = TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          );
-                          Widget text;
-                          switch (value.toInt()) {
-                            case 0:
-                              text = const Text('Mon', style: style);
-                              break;
-                            case 1:
-                              text = const Text('Tue', style: style);
-                              break;
-                            case 2:
-                              text = const Text('Wed', style: style);
-                              break;
-                            case 3:
-                              text = const Text('Thu', style: style);
-                              break;
-                            case 4:
-                              text = const Text('Fri', style: style);
-                              break;
-                            case 5:
-                              text = const Text('Sat', style: style);
-                              break;
-                            case 6:
-                              text = const Text('Sun', style: style);
-                              break;
-                            default:
-                              text = const Text('', style: style);
-                              break;
-                          }
-                          return SideTitleWidget(
-                            meta: meta,
-                            space: 8,
-                            child: text,
-                          );
-                        },
-                      ),
-                    ),
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        interval: 1,
-                        getTitlesWidget: (value, meta) {
-                          if (value == 0) return const SizedBox();
-                          return Text(
-                            '${value.toInt()}k',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          );
-                        },
-                        reservedSize: 42,
-                      ),
-                    ),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  minX: 0,
-                  maxX: 6,
-                  minY: 0,
-                  maxY: 6,
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: const [
-                        FlSpot(0, 3),
-                        FlSpot(1, 2.5),
-                        FlSpot(2, 4),
-                        FlSpot(3, 3.5),
-                        FlSpot(4, 5),
-                        FlSpot(5, 4.5),
-                        FlSpot(6, 5.8),
-                      ],
-                      isCurved: true,
-                      color: AppTheme.accentBlue,
-                      barWidth: 4,
-                      isStrokeCapRound: true,
-                      dotData: const FlDotData(show: false),
-                      belowBarData: BarAreaData(
-                        show: true,
-                        color: AppTheme.accentBlue.withOpacity(0.15),
-                        gradient: LinearGradient(
-                          colors: [
-                            AppTheme.accentBlue.withOpacity(0.3),
-                            AppTheme.accentBlue.withOpacity(0.0),
-                          ],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Real confirmed-sales trend for the trailing 7 days, bucketed per local
+  /// calendar day by ReportsService.getDailySalesTrend.
+  Widget _buildTrend(BuildContext context, List<DailySalesPoint> points) {
+    final theme = Theme.of(context);
+    if (points.isEmpty || points.every((p) => p.total == 0)) {
+      return Center(
+        child: Text(
+          'No sales in the last 7 days',
+          style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey),
         ),
+      );
+    }
+    var maxTotal = 0.0;
+    for (final p in points) {
+      if (p.total > maxTotal) maxTotal = p.total;
+    }
+    final maxY = niceCeil(maxTotal);
+    final dayFormat = DateFormat('EEE');
+    return LineChart(
+      LineChartData(
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: maxY / 4,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(
+              color: theme.colorScheme.outlineVariant.withOpacity(0.2),
+              strokeWidth: 1,
+              dashArray: [5, 5],
+            );
+          },
+        ),
+        titlesData: FlTitlesData(
+          show: true,
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 30,
+              interval: 1,
+              getTitlesWidget: (value, meta) {
+                const style = TextStyle(fontSize: 12, color: Colors.grey);
+                final i = value.toInt();
+                if (value != i.toDouble() || i < 0 || i >= points.length) {
+                  return const SizedBox();
+                }
+                return SideTitleWidget(
+                  meta: meta,
+                  space: 8,
+                  child: Text(dayFormat.format(points[i].day), style: style),
+                );
+              },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              interval: maxY / 4,
+              reservedSize: 42,
+              getTitlesWidget: (value, meta) {
+                if (value == 0) return const SizedBox();
+                return Text(
+                  compactAmount(value),
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                );
+              },
+            ),
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        minX: 0,
+        maxX: (points.length - 1).clamp(1, double.infinity).toDouble(),
+        minY: 0,
+        maxY: maxY,
+        lineBarsData: [
+          LineChartBarData(
+            spots: [
+              for (var i = 0; i < points.length; i++)
+                FlSpot(i.toDouble(), points[i].total),
+            ],
+            isCurved: true,
+            color: AppTheme.accentBlue,
+            barWidth: 4,
+            isStrokeCapRound: true,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(
+              show: true,
+              color: AppTheme.accentBlue.withOpacity(0.15),
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.accentBlue.withOpacity(0.3),
+                  AppTheme.accentBlue.withOpacity(0.0),
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

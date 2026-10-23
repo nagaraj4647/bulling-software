@@ -29,6 +29,63 @@ class ReportsService {
         toFirestore: (model, _) => model.toFirestore(),
       );
 
+  /// Buckets (timestamp, total) entries into one total per local calendar
+  /// day over [start, end). `end` is exclusive; a non-midnight `end` is
+  /// rounded up to cover its day. Days with no entries are zero-filled so
+  /// charts render gaps honestly. Local dates are used throughout (the app
+  /// targets IST, which has no DST).
+  static List<DailySalesPoint> bucketDailyTotals(
+    Iterable<({DateTime at, double total})> entries,
+    DateTime start,
+    DateTime end,
+  ) {
+    final firstDay = DateTime(start.year, start.month, start.day);
+    var lastExclusive = DateTime(end.year, end.month, end.day);
+    if (end != lastExclusive) {
+      lastExclusive = lastExclusive.add(const Duration(days: 1));
+    }
+    final dayCount = lastExclusive.difference(firstDay).inDays;
+    if (dayCount <= 0) return const [];
+    final totals = List<double>.filled(dayCount, 0.0);
+    for (final e in entries) {
+      final day = DateTime(e.at.year, e.at.month, e.at.day);
+      final index = day.difference(firstDay).inDays;
+      if (index >= 0 && index < dayCount) totals[index] += e.total;
+    }
+    return List.generate(
+      dayCount,
+      (i) => DailySalesPoint(
+        day: firstDay.add(Duration(days: i)),
+        total: totals[i],
+      ),
+    );
+  }
+
+  /// Per-day confirmed sales over [start, end) for trend charts. Same
+  /// index-free single-field date query as the summaries: only `createdAt`
+  /// range is filtered server-side, status is filtered client-side.
+  Future<List<DailySalesPoint>> getDailySalesTrend(
+    DateTime start,
+    DateTime end,
+  ) async {
+    final snapshot = await _invoicesRef
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('createdAt', isLessThan: Timestamp.fromDate(end))
+        .get();
+    final entries = <({DateTime at, double total})>[];
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      if (data['status'] != InvoiceStatus.confirmed.name) continue;
+      final ts = data['createdAt'];
+      if (ts is! Timestamp) continue;
+      entries.add((
+        at: ts.toDate(),
+        total: (data['grandTotal'] as num?)?.toDouble() ?? 0.0,
+      ));
+    }
+    return bucketDailyTotals(entries, start, end);
+  }
+
   Future<SalesReportSummary> getSalesSummary(
     DateTime start,
     DateTime end,
@@ -47,15 +104,19 @@ class ReportsService {
     double discount = 0.0;
     int count = 0;
 
+    final dailyEntries = <({DateTime at, double total})>[];
     for (final doc in snapshot.docs) {
       final data = doc.data();
       if (data['status'] != InvoiceStatus.confirmed.name) continue;
       count++;
-      totalSales += (data['grandTotal'] as num?)?.toDouble() ?? 0.0;
+      final grandTotal = (data['grandTotal'] as num?)?.toDouble() ?? 0.0;
+      totalSales += grandTotal;
       cgst += (data['cgstTotal'] as num?)?.toDouble() ?? 0.0;
       sgst += (data['sgstTotal'] as num?)?.toDouble() ?? 0.0;
       igst += (data['igstTotal'] as num?)?.toDouble() ?? 0.0;
       discount += (data['discountAmount'] as num?)?.toDouble() ?? 0.0;
+      final ts = data['createdAt'];
+      if (ts is Timestamp) dailyEntries.add((at: ts.toDate(), total: grandTotal));
     }
 
     return SalesReportSummary(
@@ -63,6 +124,7 @@ class ReportsService {
       invoiceCount: count,
       taxTotal: cgst + sgst + igst,
       discountTotal: discount,
+      dailyTotals: bucketDailyTotals(dailyEntries, start, end),
     );
   }
 

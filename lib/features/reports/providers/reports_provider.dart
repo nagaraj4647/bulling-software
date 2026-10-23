@@ -105,6 +105,20 @@ final salesReportSummaryProvider = FutureProvider<SalesReportSummary>((
   return service.getSalesSummary(dateRange.start, dateRange.end);
 });
 
+/// Trailing 7-day confirmed sales trend for the dashboard chart.
+final dashboardWeeklySalesTrendProvider = FutureProvider<List<DailySalesPoint>>((
+  ref,
+) async {
+  final service = ref.watch(reportsServiceProvider);
+  if (service == null) return const <DailySalesPoint>[];
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  return service.getDailySalesTrend(
+    today.subtract(const Duration(days: 6)),
+    today.add(const Duration(days: 1)),
+  );
+});
+
 final purchaseReportSummaryProvider = FutureProvider<PurchaseReportSummary>((
   ref,
 ) async {
