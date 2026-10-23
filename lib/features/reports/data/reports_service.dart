@@ -33,32 +33,36 @@ class ReportsService {
     DateTime start,
     DateTime end,
   ) async {
-    final query = _invoicesRef
-        .where('status', isEqualTo: InvoiceStatus.confirmed.name)
+    // Single-field range query only: adding a status equality here would
+    // require a composite index, so status is filtered client-side.
+    final snapshot = await _invoicesRef
         .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
-        .where('createdAt', isLessThan: Timestamp.fromDate(end));
+        .where('createdAt', isLessThan: Timestamp.fromDate(end))
+        .get();
 
-    final aggregateQuery = query.aggregate(
-      sum('grandTotal'),
-      sum('cgstTotal'),
-      sum('sgstTotal'),
-      sum('igstTotal'),
-      sum('discountAmount'),
-      count(),
-    );
+    double totalSales = 0.0;
+    double cgst = 0.0;
+    double sgst = 0.0;
+    double igst = 0.0;
+    double discount = 0.0;
+    int count = 0;
 
-    final snapshot = await aggregateQuery.get();
-
-    final taxTotal =
-        (snapshot.getSum('cgstTotal') ?? 0.0) +
-        (snapshot.getSum('sgstTotal') ?? 0.0) +
-        (snapshot.getSum('igstTotal') ?? 0.0);
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      if (data['status'] != InvoiceStatus.confirmed.name) continue;
+      count++;
+      totalSales += (data['grandTotal'] as num?)?.toDouble() ?? 0.0;
+      cgst += (data['cgstTotal'] as num?)?.toDouble() ?? 0.0;
+      sgst += (data['sgstTotal'] as num?)?.toDouble() ?? 0.0;
+      igst += (data['igstTotal'] as num?)?.toDouble() ?? 0.0;
+      discount += (data['discountAmount'] as num?)?.toDouble() ?? 0.0;
+    }
 
     return SalesReportSummary(
-      totalSales: snapshot.getSum('grandTotal') ?? 0.0,
-      invoiceCount: snapshot.count ?? 0,
-      taxTotal: taxTotal,
-      discountTotal: snapshot.getSum('discountAmount') ?? 0.0,
+      totalSales: totalSales,
+      invoiceCount: count,
+      taxTotal: cgst + sgst + igst,
+      discountTotal: discount,
     );
   }
 
@@ -66,32 +70,36 @@ class ReportsService {
     DateTime start,
     DateTime end,
   ) async {
-    final query = _purchasesRef
-        .where('status', isEqualTo: PurchaseStatus.confirmed.name)
+    // Single-field range query only: adding a status equality here would
+    // require a composite index, so status is filtered client-side.
+    final snapshot = await _purchasesRef
         .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
-        .where('createdAt', isLessThan: Timestamp.fromDate(end));
+        .where('createdAt', isLessThan: Timestamp.fromDate(end))
+        .get();
 
-    final aggregateQuery = query.aggregate(
-      sum('grandTotal'),
-      sum('cgstTotal'),
-      sum('sgstTotal'),
-      sum('igstTotal'),
-      sum('discountAmount'),
-      count(),
-    );
+    double totalPurchases = 0.0;
+    double cgst = 0.0;
+    double sgst = 0.0;
+    double igst = 0.0;
+    double discount = 0.0;
+    int count = 0;
 
-    final snapshot = await aggregateQuery.get();
-
-    final taxTotal =
-        (snapshot.getSum('cgstTotal') ?? 0.0) +
-        (snapshot.getSum('sgstTotal') ?? 0.0) +
-        (snapshot.getSum('igstTotal') ?? 0.0);
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      if (data['status'] != PurchaseStatus.confirmed.name) continue;
+      count++;
+      totalPurchases += (data['grandTotal'] as num?)?.toDouble() ?? 0.0;
+      cgst += (data['cgstTotal'] as num?)?.toDouble() ?? 0.0;
+      sgst += (data['sgstTotal'] as num?)?.toDouble() ?? 0.0;
+      igst += (data['igstTotal'] as num?)?.toDouble() ?? 0.0;
+      discount += (data['discountAmount'] as num?)?.toDouble() ?? 0.0;
+    }
 
     return PurchaseReportSummary(
-      totalPurchases: snapshot.getSum('grandTotal') ?? 0.0,
-      purchaseCount: snapshot.count ?? 0,
-      taxTotal: taxTotal,
-      discountTotal: snapshot.getSum('discountAmount') ?? 0.0,
+      totalPurchases: totalPurchases,
+      purchaseCount: count,
+      taxTotal: cgst + sgst + igst,
+      discountTotal: discount,
     );
   }
 
@@ -99,8 +107,9 @@ class ReportsService {
     DateTime start,
     DateTime end,
   ) async {
+    // Single-field range query only: adding a status equality here would
+    // require a composite index, so status is filtered client-side.
     final querySnapshot = await _expensesRef
-        .where('status', isEqualTo: ExpenseStatus.confirmed.name)
         .where('expenseDate', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
         .where('expenseDate', isLessThan: Timestamp.fromDate(end))
         .get();
@@ -110,6 +119,7 @@ class ReportsService {
 
     for (var doc in querySnapshot.docs) {
       final expense = doc.data();
+      if (expense.status != ExpenseStatus.confirmed) continue;
       total += expense.amount;
       final catName = expense.category.name;
       categoryTotals[catName] =

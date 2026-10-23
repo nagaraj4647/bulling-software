@@ -514,10 +514,8 @@ class BillingService {
   }) async {
     Query<InvoiceModel> query = _invoicesRef;
 
-    if (statusFilter != null) {
-      query = query.where('status', isEqualTo: statusFilter.name);
-    }
-
+    // Status is filtered client-side below: combining a status equality
+    // with the createdAt range/order would require a composite index.
     if (startDate != null) {
       query = query.where(
         'createdAt',
@@ -540,9 +538,12 @@ class BillingService {
     final snapshot = await query.get();
     final hasMore = snapshot.docs.length > limit;
     final docs = hasMore ? snapshot.docs.sublist(0, limit) : snapshot.docs;
+    final filtered = statusFilter == null
+        ? docs
+        : docs.where((d) => d.data().status == statusFilter).toList();
 
     return {
-      'invoices': docs.map((d) => d.data()).toList(),
+      'invoices': filtered.map((d) => d.data()).toList(),
       'lastDocument': docs.isNotEmpty ? docs.last : null,
       'hasMore': hasMore,
     };
@@ -550,12 +551,19 @@ class BillingService {
 
   /// Recent confirmed invoices for dashboard.
   Stream<List<InvoiceModel>> getRecentInvoicesStream({int limit = 5}) {
+    // Over-fetch and filter client-side: a status equality combined with
+    // the createdAt ordering would require a composite index.
     return _invoicesRef
-        .where('status', isEqualTo: InvoiceStatus.confirmed.name)
         .orderBy('createdAt', descending: true)
-        .limit(limit)
+        .limit(limit * 4)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => doc.data())
+              .where((invoice) => invoice.status == InvoiceStatus.confirmed)
+              .take(limit)
+              .toList(),
+        );
   }
 
   /// Today's confirmed sales total for dashboard.

@@ -118,14 +118,8 @@ class ExpenseService {
   }) async {
     Query<ExpenseModel> query = _expensesRef;
 
-    if (statusFilter != null) {
-      query = query.where('status', isEqualTo: statusFilter.name);
-    }
-
-    if (categoryFilter != null) {
-      query = query.where('category', isEqualTo: categoryFilter.name);
-    }
-
+    // Status and category are filtered client-side below: combining them
+    // with the expenseDate range/order would require a composite index.
     if (startDate != null) {
       query = query.where(
         'expenseDate',
@@ -151,9 +145,19 @@ class ExpenseService {
     final snapshot = await query.get();
     final hasMore = snapshot.docs.length > limit;
     final docs = hasMore ? snapshot.docs.sublist(0, limit) : snapshot.docs;
+    final filtered = docs.where((d) {
+      final expense = d.data();
+      if (statusFilter != null && expense.status != statusFilter) {
+        return false;
+      }
+      if (categoryFilter != null && expense.category != categoryFilter) {
+        return false;
+      }
+      return true;
+    }).toList();
 
     return {
-      'expenses': docs.map((d) => d.data()).toList(),
+      'expenses': filtered.map((d) => d.data()).toList(),
       'lastDocument': docs.isNotEmpty ? docs.last : null,
       'hasMore': hasMore,
     };
