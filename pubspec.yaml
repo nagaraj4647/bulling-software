@@ -44,6 +44,9 @@ dependencies:
   google_fonts: ^6.2.1
   flutter_animate: ^4.5.2
   fl_chart: ^1.2.0
+  pdf: ^3.13.1
+  printing: ^5.15.1
+  qr_flutter: ^4.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

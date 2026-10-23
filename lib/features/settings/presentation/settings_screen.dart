@@ -25,6 +25,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late final TextEditingController _emailController;
   late final TextEditingController _addressController;
   late final TextEditingController _gstController;
+  late final TextEditingController _upiIdController;
 
   String? _selectedBusinessType;
   String? _selectedState;
@@ -93,6 +94,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _emailController = TextEditingController();
     _addressController = TextEditingController();
     _gstController = TextEditingController();
+    _upiIdController = TextEditingController();
   }
 
   @override
@@ -103,6 +105,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _emailController.dispose();
     _addressController.dispose();
     _gstController.dispose();
+    _upiIdController.dispose();
     super.dispose();
   }
 
@@ -114,6 +117,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _emailController.text = business.email;
     _addressController.text = business.address;
     _gstController.text = business.gstNumber ?? '';
+    _upiIdController.text = business.upiId ?? '';
     _selectedBusinessType = _businessTypes.contains(business.businessType)
         ? business.businessType
         : 'Other';
@@ -139,6 +143,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     final rawGst = _gstController.text.trim().toUpperCase();
+    final rawUpiId = _upiIdController.text.trim();
 
     final updatedBusiness = currentBusiness.copyWith(
       businessName: _businessNameController.text.trim(),
@@ -151,6 +156,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ? _selectedState!.trim()
           : null,
       gstNumber: rawGst.isNotEmpty ? rawGst : null,
+      upiId: rawUpiId.isNotEmpty ? rawUpiId : null,
       isGstInclusive: _isGstInclusive,
     );
 
@@ -508,6 +514,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 );
                 if (!gstRegex.hasMatch(val.trim().toUpperCase())) {
                   return 'Enter a valid 15-character GSTIN (e.g. 29AAAAA0000A1Z5)';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _upiIdController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'UPI ID (for QR on bills)',
+                prefixIcon: Icon(Icons.qr_code),
+                border: OutlineInputBorder(),
+                hintText: 'yourname@upi',
+                helperText: 'A "Scan to Pay" UPI QR with the bill amount will appear on invoices and PDF bills.',
+              ),
+              validator: (val) {
+                if (val == null || val.trim().isEmpty) return null;
+                final upiRegex = RegExp(r'^[\w.\-_]{2,}@[A-Za-z]{2,}\$');
+                if (!upiRegex.hasMatch(val.trim())) {
+                  return 'Enter a valid UPI ID (e.g. name@okhdfcbank)';
                 }
                 return null;
               },
