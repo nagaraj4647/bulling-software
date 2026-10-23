@@ -514,10 +514,8 @@ class BillingService {
   }) async {
     Query<InvoiceModel> query = _invoicesRef;
 
-    if (statusFilter != null) {
-      query = query.where('status', isEqualTo: statusFilter.name);
-    }
-
+    // Status is filtered client-side below: combining a status equality
+    // with the createdAt range/order would require a composite index.
     if (startDate != null) {
       query = query.where(
         'createdAt',
@@ -529,33 +527,67 @@ class BillingService {
       query = query.where('createdAt', isLessThan: Timestamp.fromDate(endDate));
     }
 
-    query = query.orderBy('createdAt', descending: true);
+    final baseQuery = query.orderBy('createdAt', descending: true);
 
-    if (startAfter != null) {
-      query = query.startAfterDocument(startAfter);
+    // Status is filtered client-side, so keep fetching raw pages until
+    // `limit` matching docs are collected or the range is exhausted.
+    // Otherwise a raw page full of excluded docs would look like "no data"
+    // even when matching invoices exist further back.
+    final List<QueryDocumentSnapshot<InvoiceModel>> filtered = [];
+    DocumentSnapshot<InvoiceModel>? cursor =
+        startAfter as DocumentSnapshot<InvoiceModel>?;
+    var hasMore = true;
+
+    while (filtered.length < limit) {
+      var pageQuery = baseQuery;
+      if (cursor != null) {
+        pageQuery = pageQuery.startAfterDocument(cursor);
+      }
+      final snapshot = await pageQuery.limit(limit + 1).get();
+      if (snapshot.docs.isEmpty) {
+        hasMore = false;
+        break;
+      }
+      final rawHasMore = snapshot.docs.length > limit;
+      final pageDocs = rawHasMore
+          ? snapshot.docs.sublist(0, limit)
+          : snapshot.docs;
+      cursor = pageDocs.last;
+      if (statusFilter == null) {
+        filtered.addAll(pageDocs);
+      } else {
+        filtered.addAll(
+          pageDocs.where((d) => d.data().status == statusFilter),
+        );
+      }
+      if (!rawHasMore) {
+        hasMore = false;
+        break;
+      }
     }
 
-    query = query.limit(limit + 1);
-
-    final snapshot = await query.get();
-    final hasMore = snapshot.docs.length > limit;
-    final docs = hasMore ? snapshot.docs.sublist(0, limit) : snapshot.docs;
-
     return {
-      'invoices': docs.map((d) => d.data()).toList(),
-      'lastDocument': docs.isNotEmpty ? docs.last : null,
+      'invoices': filtered.map((d) => d.data()).toList(),
+      'lastDocument': cursor,
       'hasMore': hasMore,
     };
   }
 
   /// Recent confirmed invoices for dashboard.
   Stream<List<InvoiceModel>> getRecentInvoicesStream({int limit = 5}) {
+    // Over-fetch and filter client-side: a status equality combined with
+    // the createdAt ordering would require a composite index.
     return _invoicesRef
-        .where('status', isEqualTo: InvoiceStatus.confirmed.name)
         .orderBy('createdAt', descending: true)
-        .limit(limit)
+        .limit(limit * 4)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => doc.data())
+              .where((invoice) => invoice.status == InvoiceStatus.confirmed)
+              .take(limit)
+              .toList(),
+        );
   }
 
   /// Today's confirmed sales total for dashboard.
