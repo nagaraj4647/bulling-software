@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/app_logo.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -137,15 +138,7 @@ class _BusinessSetupPageState extends ConsumerState<BusinessSetupPage> {
                     Center(
                       child: Column(
                         children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: Image.asset(
-                              'assets/icon/new_logo.png',
-                              width: 72,
-                              height: 72,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
+                          AppLogo(size: 72),
                           const SizedBox(height: 16),
                           Text(
                             'Let\'s set up your business',
