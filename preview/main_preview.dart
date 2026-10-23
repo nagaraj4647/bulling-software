@@ -4,20 +4,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'core/theme/app_theme.dart';
-import 'features/auth/providers/auth_provider.dart';
-import 'features/billing/presentation/new_invoice_screen.dart';
-import 'features/billing/presentation/billing_screen.dart';
-import 'features/billing/presentation/invoice_details_screen.dart';
-import 'features/billing/providers/billing_provider.dart';
-import 'features/billing/providers/cart_provider.dart';
-import 'features/billing/models/invoice_model.dart';
-import 'features/business/models/business_model.dart';
-import 'features/business/providers/business_provider.dart';
-import 'features/customers/models/customer_model.dart';
-import 'features/customers/providers/customer_provider.dart';
-import 'features/products/models/product_model.dart';
-import 'features/products/providers/product_provider.dart';
+import 'package:billing_app/core/theme/app_theme.dart';
+import 'package:billing_app/features/auth/providers/auth_provider.dart';
+import 'package:billing_app/features/billing/presentation/new_invoice_screen.dart';
+import 'package:billing_app/features/billing/presentation/billing_screen.dart';
+import 'package:billing_app/features/billing/presentation/invoice_details_screen.dart';
+import 'package:billing_app/features/billing/providers/billing_provider.dart';
+import 'package:billing_app/features/billing/providers/cart_provider.dart';
+import 'package:billing_app/features/billing/models/invoice_model.dart';
+import 'package:billing_app/features/business/models/business_model.dart';
+import 'package:billing_app/features/business/providers/business_provider.dart';
+import 'package:billing_app/features/customers/models/customer_model.dart';
+import 'package:billing_app/features/customers/providers/customer_provider.dart';
+import 'package:billing_app/features/products/models/product_model.dart';
+import 'package:billing_app/features/products/providers/product_provider.dart';
 
 final _business = BusinessModel(
   businessId: 'biz1',
@@ -199,17 +199,45 @@ final _customers = <CustomerModel>[
   ),
 ];
 
+InvoiceItemModel _item(
+  String pid,
+  String name,
+  double qty,
+  double price,
+  double gstRate,
+) {
+  final taxable = qty * price;
+  final half = taxable * gstRate / 200;
+  final gst = taxable * gstRate / 100;
+  return InvoiceItemModel(
+    productId: pid,
+    productNameSnapshot: name,
+    quantity: qty,
+    unitPrice: price,
+    discount: 0,
+    taxableValue: taxable,
+    gstRate: gstRate,
+    cgstAmount: half,
+    sgstAmount: half,
+    igstAmount: 0,
+    totalAmount: taxable + gst,
+  );
+}
+
 InvoiceModel _invoice(
   String id,
   String number,
   String customer,
-  double total,
+  List<InvoiceItemModel> items,
   double paid,
   String method,
   InvoiceStatus status,
   int daysAgo,
 ) {
-  final paid2 = paid;
+  final taxable = items.fold<double>(0, (s, i) => s + i.taxableValue);
+  final cgst = items.fold<double>(0, (s, i) => s + i.cgstAmount);
+  final sgst = items.fold<double>(0, (s, i) => s + i.sgstAmount);
+  final total = items.fold<double>(0, (s, i) => s + i.totalAmount);
   return InvoiceModel(
     invoiceId: id,
     businessId: 'biz1',
@@ -222,47 +250,18 @@ InvoiceModel _invoice(
       city: 'Madurai',
       state: 'Tamil Nadu',
     ),
-    items: [
-      InvoiceItemModel(
-        productId: 'p4',
-        productNameSnapshot: 'Aashirvaad Atta 5kg',
-        quantity: 2,
-        unitPrice: 245,
-        discount: 0,
-        taxableValue: 466.67,
-        gstRate: 5,
-        cgstAmount: 11.67,
-        sgstAmount: 11.67,
-        igstAmount: 0,
-        totalAmount: 490,
-      ),
-      InvoiceItemModel(
-        productId: 'p5',
-        productNameSnapshot: 'Fortune Sunflower Oil 1L',
-        quantity: 1,
-        unitPrice: 138,
-        discount: 0,
-        taxableValue: 131.43,
-        gstRate: 5,
-        cgstAmount: 3.29,
-        sgstAmount: 3.29,
-        igstAmount: 0,
-        totalAmount: 138,
-      ),
-    ],
-    subtotal: total - (total * 5 / 105),
+    items: items,
+    subtotal: taxable,
     discountAmount: 0,
-    taxableAmount: total * 100 / 105,
-    cgstTotal: total * 5 / 210,
-    sgstTotal: total * 5 / 210,
+    taxableAmount: taxable,
+    cgstTotal: cgst,
+    sgstTotal: sgst,
     igstTotal: 0,
     grandTotal: total,
     payment: InvoicePayment(
-      status: paid2 >= total
-          ? 'Paid'
-          : (paid2 > 0 ? 'Partially Paid' : 'Unpaid'),
-      paidAmount: paid2,
-      balanceAmount: total - paid2,
+      status: paid >= total ? 'Paid' : (paid > 0 ? 'Partially Paid' : 'Unpaid'),
+      paidAmount: paid,
+      balanceAmount: total - paid,
       paymentMethod: method,
     ),
     status: status,
@@ -274,8 +273,12 @@ final _invoices = <InvoiceModel>[
     'inv1',
     'INV-1042',
     'Kumar Textiles',
-    628.00,
-    628.00,
+    [
+      _item('p4', 'Aashirvaad Atta 5kg', 2, 233.33, 5),
+      _item('p5', 'Fortune Sunflower Oil 1L', 1, 131.43, 5),
+      _item('p1', 'Parle-G Gold Biscuits 100g', 2, 9.52, 5),
+    ],
+    647.99,
     'UPI',
     InvoiceStatus.confirmed,
     0,
@@ -284,7 +287,12 @@ final _invoices = <InvoiceModel>[
     'inv2',
     'INV-1041',
     'Selvi Traders',
-    1250.00,
+    [
+      _item('p4', 'Aashirvaad Atta 5kg', 2, 233.33, 5),
+      _item('p5', 'Fortune Sunflower Oil 1L', 1, 131.43, 5),
+      _item('p12', 'India Gate Basmati Rice 1kg', 4, 138.10, 5),
+      _item('p8', 'Maggi Noodles 70g', 3, 13.33, 5),
+    ],
     500.00,
     'Cash',
     InvoiceStatus.confirmed,
@@ -294,8 +302,11 @@ final _invoices = <InvoiceModel>[
     'inv3',
     'INV-1040',
     'Walk-in Customer',
-    212.00,
-    212.00,
+    [
+      _item('p7', 'Tata Salt 1kg', 2, 26.67, 5),
+      _item('p6', 'Colgate MaxFresh 150g', 1, 80.51, 18),
+    ],
+    151.01,
     'Cash',
     InvoiceStatus.confirmed,
     1,
@@ -304,7 +315,11 @@ final _invoices = <InvoiceModel>[
     'inv4',
     'INV-1039',
     'Kumar Textiles',
-    2145.50,
+    [
+      _item('p3', 'Sunrise Coffee Powder 200g', 4, 109.52, 5),
+      _item('p9', 'Surf Excel Easy Wash 1kg', 6, 111.86, 18),
+      _item('p11', 'Amul Butter 100g', 5, 53.57, 12),
+    ],
     0,
     'None',
     InvoiceStatus.draft,
@@ -314,8 +329,12 @@ final _invoices = <InvoiceModel>[
     'inv5',
     'INV-1038',
     'Selvi Traders',
-    876.25,
-    876.25,
+    [
+      _item('p4', 'Aashirvaad Atta 5kg', 1, 233.33, 5),
+      _item('p5', 'Fortune Sunflower Oil 1L', 2, 131.43, 5),
+      _item('p2', 'Aavin Milk 500ml', 5, 28.00, 0),
+    ],
+    661.00,
     'UPI',
     InvoiceStatus.confirmed,
     3,

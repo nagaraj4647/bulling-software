@@ -291,12 +291,12 @@ class _NewInvoiceScreenState extends ConsumerState<NewInvoiceScreen> {
 
           // Customer Selection
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(12.0),
             child: InkWell(
               onTap: _showCustomerPicker,
               borderRadius: BorderRadius.circular(AppTheme.radiusM),
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   border: Border.all(
                     color: theme.colorScheme.outline.withAlpha(40),
@@ -315,7 +315,7 @@ class _NewInvoiceScreenState extends ConsumerState<NewInvoiceScreen> {
                         color: theme.colorScheme.primary,
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -343,215 +343,276 @@ class _NewInvoiceScreenState extends ConsumerState<NewInvoiceScreen> {
 
           const Divider(height: 1),
 
-          // Cart Items List
+          // Scrollable area: cart items + bill summary share the space, so
+          // every item stays inspectable and editable at any panel height.
           Expanded(
-            child: cartState.items.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.shopping_cart_outlined,
-                          size: 64,
-                          color: theme.colorScheme.outlineVariant,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Cart is empty',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: theme.colorScheme.outline,
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                if (cartState.items.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 48),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.shopping_cart_outlined,
+                            size: 64,
+                            color: theme.colorScheme.outlineVariant,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 16),
+                          Text(
+                            'Cart is empty',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: theme.colorScheme.outline,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: cartState.items.length,
-                    itemBuilder: (context, index) {
-                      final item = cartState.items[index];
-                      return _buildCartItemCard(item, theme)
-                          .animate()
-                          .fade()
-                          .slideX(begin: 0.1, delay: (index * 50).ms);
-                    },
+                else
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Column(
+                      children: [
+                        for (
+                          var index = 0;
+                          index < cartState.items.length;
+                          index++
+                        )
+                          _buildCartItemCard(cartState.items[index], theme)
+                              .animate()
+                              .fade()
+                              .slideX(begin: 0.1, delay: (index * 50).ms),
+                      ],
+                    ),
                   ),
+
+                // Bill summary + payment
+                Container(
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withAlpha(
+                      50,
+                    ),
+                    border: Border(
+                      top: BorderSide(
+                        color: theme.colorScheme.outlineVariant.withAlpha(40),
+                      ),
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(
+                          'GST Inclusive Prices',
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        value: _isGstInclusive,
+                        activeColor: theme.colorScheme.primary,
+                        onChanged: (val) {
+                          setState(() => _isGstInclusive = val);
+                          ref
+                              .read(cartProvider.notifier)
+                              .setIsGstInclusive(val);
+                        },
+                      ),
+                      const SizedBox(height: 4),
+                      _buildAnimatedAmountRow(
+                        'Subtotal',
+                        invoice.subtotal,
+                        theme,
+                      ),
+                      _buildAnimatedAmountRow(
+                        'Taxable Amount',
+                        invoice.taxableAmount,
+                        theme,
+                      ),
+                      if (invoice.cgstTotal > 0)
+                        _buildAnimatedAmountRow(
+                          'CGST',
+                          invoice.cgstTotal,
+                          theme,
+                        ),
+                      if (invoice.sgstTotal > 0)
+                        _buildAnimatedAmountRow(
+                          'SGST',
+                          invoice.sgstTotal,
+                          theme,
+                        ),
+                      if (invoice.igstTotal > 0)
+                        _buildAnimatedAmountRow(
+                          'IGST',
+                          invoice.igstTotal,
+                          theme,
+                        ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Divider(height: 1),
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Grand Total',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          TweenAnimationBuilder<double>(
+                            tween: Tween<double>(
+                              begin: 0,
+                              end: invoice.grandTotal,
+                            ),
+                            duration: const Duration(milliseconds: 500),
+                            curve: Curves.easeOutCubic,
+                            builder: (context, value, child) {
+                              return Text(
+                                '\u20B9${value.toStringAsFixed(2)}',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Payment controls
+                      TextField(
+                        controller: _paymentController,
+                        decoration: InputDecoration(
+                          labelText: 'Amount Paid (\u20B9)',
+                          suffixIcon: TextButton(
+                            onPressed: () {
+                              _paymentController.text = invoice.grandTotal
+                                  .toStringAsFixed(2);
+                              ref
+                                  .read(cartProvider.notifier)
+                                  .setPayment(
+                                    invoice.grandTotal,
+                                    _paymentMethod,
+                                  );
+                            },
+                            child: const Text('Exact'),
+                          ),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (val) {
+                          final amount = double.tryParse(val) ?? 0.0;
+                          ref
+                              .read(cartProvider.notifier)
+                              .setPayment(amount, _paymentMethod);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: ['Cash', 'UPI', 'Card', 'Bank'].map((m) {
+                          final selected = _paymentMethod == m;
+                          return ChoiceChip(
+                            label: Text(m),
+                            selected: selected,
+                            showCheckmark: false,
+                            labelStyle: TextStyle(
+                              color: selected
+                                  ? Colors.white
+                                  : theme.colorScheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            selectedColor: theme.colorScheme.primary,
+                            backgroundColor:
+                                theme.colorScheme.surfaceContainerHighest,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              side: BorderSide.none,
+                            ),
+                            onSelected: (val) {
+                              if (val) {
+                                setState(() => _paymentMethod = m);
+                                ref
+                                    .read(cartProvider.notifier)
+                                    .setPayment(cartState.paidAmount, m);
+                              }
+                            },
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildAnimatedAmountRow(
+                        'Balance Due',
+                        invoice.payment.balanceAmount,
+                        theme,
+                        color: invoice.payment.balanceAmount > 0
+                            ? AppTheme.error
+                            : AppTheme.success,
+                        isBold: true,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
 
-          // Checkout Section
+          // Pinned checkout button - always visible regardless of scroll.
           Container(
             decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest.withAlpha(50),
+              color: theme.colorScheme.surface,
               border: Border(
                 top: BorderSide(
                   color: theme.colorScheme.outlineVariant.withAlpha(40),
                 ),
               ),
+              boxShadow: AppTheme.premiumShadow,
             ),
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    'GST Inclusive Prices',
-                    style: theme.textTheme.titleSmall,
-                  ),
-                  value: _isGstInclusive,
-                  activeColor: theme.colorScheme.primary,
-                  onChanged: (val) {
-                    setState(() => _isGstInclusive = val);
-                    ref.read(cartProvider.notifier).setIsGstInclusive(val);
-                  },
-                ),
-                const SizedBox(height: 8),
-                _buildAnimatedAmountRow('Subtotal', invoice.subtotal, theme),
-                _buildAnimatedAmountRow(
-                  'Taxable Amount',
-                  invoice.taxableAmount,
-                  theme,
-                ),
-                if (invoice.cgstTotal > 0)
-                  _buildAnimatedAmountRow('CGST', invoice.cgstTotal, theme),
-                if (invoice.sgstTotal > 0)
-                  _buildAnimatedAmountRow('SGST', invoice.sgstTotal, theme),
-                if (invoice.igstTotal > 0)
-                  _buildAnimatedAmountRow('IGST', invoice.igstTotal, theme),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Divider(height: 1),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Grand Total',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    TweenAnimationBuilder<double>(
-                      tween: Tween<double>(begin: 0, end: invoice.grandTotal),
-                      duration: const Duration(milliseconds: 500),
-                      curve: Curves.easeOutCubic,
-                      builder: (context, value, child) {
-                        return Text(
-                          '₹${value.toStringAsFixed(2)}',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.primary,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            child: SafeArea(
+              top: false,
+              child:
+                  FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(52),
+                          backgroundColor: AppTheme.success,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusM,
+                            ),
                           ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // Payment controls
-                TextField(
-                  controller: _paymentController,
-                  decoration: InputDecoration(
-                    labelText: 'Amount Paid (\u20B9)',
-                    suffixIcon: TextButton(
-                      onPressed: () {
-                        _paymentController.text = invoice.grandTotal
-                            .toStringAsFixed(2);
-                        ref
-                            .read(cartProvider.notifier)
-                            .setPayment(invoice.grandTotal, _paymentMethod);
-                      },
-                      child: const Text('Exact'),
-                    ),
-                  ),
-                  keyboardType: TextInputType.number,
-                  onChanged: (val) {
-                    final amount = double.tryParse(val) ?? 0.0;
-                    ref
-                        .read(cartProvider.notifier)
-                        .setPayment(amount, _paymentMethod);
-                  },
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: ['Cash', 'UPI', 'Card', 'Bank'].map((m) {
-                    final selected = _paymentMethod == m;
-                    return ChoiceChip(
-                      label: Text(m),
-                      selected: selected,
-                      showCheckmark: false,
-                      labelStyle: TextStyle(
-                        color: selected
-                            ? Colors.white
-                            : theme.colorScheme.onSurface,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      selectedColor: theme.colorScheme.primary,
-                      backgroundColor:
-                          theme.colorScheme.surfaceContainerHighest,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        side: BorderSide.none,
-                      ),
-                      onSelected: (val) {
-                        if (val) {
-                          setState(() => _paymentMethod = m);
-                          ref
-                              .read(cartProvider.notifier)
-                              .setPayment(cartState.paidAmount, m);
-                        }
-                      },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 16),
-                _buildAnimatedAmountRow(
-                  'Balance Due',
-                  invoice.payment.balanceAmount,
-                  theme,
-                  color: invoice.payment.balanceAmount > 0
-                      ? AppTheme.error
-                      : AppTheme.success,
-                  isBold: true,
-                ),
-                const SizedBox(height: 24),
-
-                FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 20),
-                        backgroundColor: AppTheme.success,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppTheme.radiusM),
                         ),
-                      ),
-                      onPressed: isLoading || cartState.items.isEmpty
-                          ? null
-                          : () => _confirmInvoice(invoice),
-                      icon: isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(Icons.check_circle_outline, size: 24),
-                      label: Text(
-                        isLoading ? 'Processing...' : 'Complete Checkout',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                        onPressed: isLoading || cartState.items.isEmpty
+                            ? null
+                            : () => _confirmInvoice(invoice),
+                        icon: isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.check_circle_outline, size: 24),
+                        label: Text(
+                          isLoading
+                              ? 'Processing...'
+                              : 'Complete Checkout  \u2022  \u20B9${invoice.grandTotal.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                    )
-                    .animate(target: cartState.items.isNotEmpty ? 1 : 0)
-                    .scaleXY(end: 1, begin: 0.95)
-                    .fade(),
-              ],
+                      )
+                      .animate(target: cartState.items.isNotEmpty ? 1 : 0)
+                      .scaleXY(end: 1, begin: 0.95)
+                      .fade(),
             ),
           ),
         ],
