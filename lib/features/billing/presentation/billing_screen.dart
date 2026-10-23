@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../core/widgets/app_empty_state.dart';
-import '../../../core/widgets/status_chip.dart';
 import '../providers/billing_provider.dart';
 import '../models/invoice_model.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -33,7 +32,7 @@ class BillingScreen extends ConsumerWidget {
       ),
       body: Column(
         children: [
-          // Filter chips
+          // Filter pills
           Container(
             color: theme.colorScheme.surface,
             width: double.infinity,
@@ -43,37 +42,38 @@ class BillingScreen extends ConsumerWidget {
               child: Row(
                 children: InvoiceFilter.values.map((filter) {
                   final isSelected = currentFilter == filter;
+                  final label =
+                      filter.name[0].toUpperCase() + filter.name.substring(1);
                   return Padding(
-                    padding: const EdgeInsets.only(right: 12.0),
-                    child:
-                        FilterChip(
-                              label: Text(
-                                filter.name[0].toUpperCase() +
-                                    filter.name.substring(1),
-                                style: TextStyle(
-                                  color: isSelected
-                                      ? Colors.white
-                                      : theme.colorScheme.onSurface,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
-                                ),
-                              ),
-                              selected: isSelected,
-                              showCheckmark: false,
-                              selectedColor: theme.colorScheme.primary,
-                              backgroundColor:
-                                  theme.colorScheme.surfaceContainerHighest,
-                              onSelected: (selected) {
-                                if (selected) {
-                                  ref
-                                      .read(invoiceFilterProvider.notifier)
-                                      .setFilter(filter);
-                                }
-                              },
-                            )
-                            .animate(target: isSelected ? 1 : 0)
-                            .scaleXY(end: 1.05, duration: 200.ms),
+                    padding: const EdgeInsets.only(right: 10),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(24),
+                      onTap: () => ref
+                          .read(invoiceFilterProvider.notifier)
+                          .setFilter(filter),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Text(
+                          label,
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: isSelected
+                                ? Colors.white
+                                : theme.colorScheme.onSurface,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
                   );
                 }).toList(),
               ),
@@ -121,10 +121,6 @@ class BillingScreen extends ConsumerWidget {
                             invoice.status == InvoiceStatus.confirmed;
                         final isCancelled =
                             invoice.status == InvoiceStatus.cancelled;
-
-                        String statusLabel = 'Draft';
-                        if (isConfirmed) statusLabel = 'Confirmed';
-                        if (isCancelled) statusLabel = 'Cancelled';
 
                         Color statusColor = AppTheme.draft;
                         if (isConfirmed) statusColor = AppTheme.confirmed;
@@ -190,7 +186,7 @@ class BillingScreen extends ConsumerWidget {
                                                         ),
                                                       ),
                                                       Text(
-                                                        '₹${invoice.grandTotal.toStringAsFixed(2)}',
+                                                        '\u20B9${invoice.grandTotal.toStringAsFixed(2)}',
                                                         style: theme
                                                             .textTheme
                                                             .titleMedium
@@ -198,9 +194,6 @@ class BillingScreen extends ConsumerWidget {
                                                               fontWeight:
                                                                   FontWeight
                                                                       .w700,
-                                                              color: theme
-                                                                  .colorScheme
-                                                                  .primary,
                                                             ),
                                                       ),
                                                     ],
@@ -209,12 +202,7 @@ class BillingScreen extends ConsumerWidget {
                                                   Row(
                                                     children: [
                                                       Text(
-                                                        invoice
-                                                                .invoiceNumber
-                                                                .isNotEmpty
-                                                            ? invoice
-                                                                  .invoiceNumber
-                                                            : 'Draft',
+                                                        '${invoice.invoiceNumber.isNotEmpty ? invoice.invoiceNumber : 'Draft'} \u2022 ${DateFormat('dd MMM yyyy').format(invoice.issueDate)}',
                                                         style: theme
                                                             .textTheme
                                                             .bodySmall
@@ -233,20 +221,8 @@ class BillingScreen extends ConsumerWidget {
                                                             ),
                                                       ),
                                                       const Spacer(),
-                                                      Text(
-                                                        DateFormat(
-                                                          'dd MMM yyyy',
-                                                        ).format(
-                                                          invoice.issueDate,
-                                                        ),
-                                                        style: theme
-                                                            .textTheme
-                                                            .bodySmall
-                                                            ?.copyWith(
-                                                              color: theme
-                                                                  .colorScheme
-                                                                  .outline,
-                                                            ),
+                                                      _PaymentBadge(
+                                                        invoice: invoice,
                                                       ),
                                                     ],
                                                   ),
@@ -280,6 +256,54 @@ class BillingScreen extends ConsumerWidget {
         icon: const Icon(Icons.add),
         label: const Text('New Invoice'),
       ).animate().scale(delay: 400.ms, curve: Curves.easeOutBack),
+    );
+  }
+}
+
+class _PaymentBadge extends StatelessWidget {
+  final InvoiceModel invoice;
+
+  const _PaymentBadge({required this.invoice});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (invoice.status == InvoiceStatus.draft) {
+      return _pill(theme, 'Draft', AppTheme.draft);
+    }
+    if (invoice.status == InvoiceStatus.cancelled) {
+      return _pill(theme, 'Cancelled', AppTheme.cancelled);
+    }
+
+    final balance = invoice.payment.balanceAmount;
+    if (balance <= 0) {
+      return _pill(theme, 'Paid', AppTheme.paid);
+    }
+    if (invoice.payment.paidAmount > 0) {
+      return _pill(
+        theme,
+        'Due \u20B9${balance.toStringAsFixed(2)}',
+        AppTheme.partial,
+      );
+    }
+    return _pill(theme, 'Unpaid', AppTheme.unpaid);
+  }
+
+  Widget _pill(ThemeData theme, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }

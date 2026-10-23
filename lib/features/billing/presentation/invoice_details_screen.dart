@@ -2,9 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import 'package:printing/printing.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/error_formatter.dart';
+import '../../business/models/business_model.dart';
+import '../../business/providers/business_provider.dart';
 import '../providers/billing_provider.dart';
 import '../models/invoice_model.dart';
+import '../services/invoice_pdf_service.dart';
 
 class InvoiceDetailsScreen extends ConsumerWidget {
   final String invoiceId;
@@ -71,6 +78,7 @@ class InvoiceDetailsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final paginatedState = ref.watch(paginatedInvoicesProvider);
     final isCancelling = ref.watch(billingControllerProvider).isLoading;
+    final business = ref.watch(currentBusinessProvider).value;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Invoice Details')),
@@ -110,6 +118,9 @@ class InvoiceDetailsScreen extends ConsumerWidget {
                 const SizedBox(height: 16),
                 _buildTotalsCard(context, invoice),
                 const SizedBox(height: 16),
+                _buildUpiQrCard(context, business, invoice),
+                _buildBillActions(context, business, invoice),
+                const SizedBox(height: 8),
                 if (isConfirmed)
                   FilledButton.icon(
                     style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -155,13 +166,33 @@ class InvoiceDetailsScreen extends ConsumerWidget {
                   style: Theme.of(context).textTheme.headlineSmall
                       ?.copyWith(fontWeight: FontWeight.bold),
                 ),
-                Chip(
-                  label: Text(invoice.status.name.toUpperCase()),
-                  backgroundColor: invoice.status == InvoiceStatus.confirmed
-                      ? Colors.green[100]
-                      : (invoice.status == InvoiceStatus.cancelled
-                            ? Colors.red[100]
-                            : Colors.grey[200]),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        (invoice.status == InvoiceStatus.confirmed
+                                ? AppTheme.confirmed
+                                : (invoice.status == InvoiceStatus.cancelled
+                                      ? AppTheme.cancelled
+                                      : AppTheme.draft))
+                            .withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    invoice.status.name.toUpperCase(),
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: invoice.status == InvoiceStatus.confirmed
+                          ? AppTheme.confirmed
+                          : (invoice.status == InvoiceStatus.cancelled
+                                ? AppTheme.cancelled
+                                : AppTheme.draft),
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -204,9 +235,13 @@ class InvoiceDetailsScreen extends ConsumerWidget {
               ),
               if (invoice.customerSnapshot!.phone != null)
                 Text('Ph: ${invoice.customerSnapshot!.phone}'),
-              if (invoice.customerSnapshot!.city != null)
+              if ((invoice.customerSnapshot!.address ?? '').isNotEmpty ||
+                  (invoice.customerSnapshot!.city ?? '').isNotEmpty)
                 Text(
-                  '${invoice.customerSnapshot!.address ?? ''}, ${invoice.customerSnapshot!.city}',
+                  [
+                    invoice.customerSnapshot!.address ?? '',
+                    invoice.customerSnapshot!.city ?? '',
+                  ].where((s) => s.isNotEmpty).join(', '),
                 ),
               if (invoice.customerSnapshot!.gstNumber != null)
                 Text('GSTIN: ${invoice.customerSnapshot!.gstNumber}'),
@@ -329,18 +364,53 @@ class InvoiceDetailsScreen extends ConsumerWidget {
                 ),
               ],
             ),
-            const Divider(),
-            _buildAmountRow(
-              'Paid (${invoice.payment.paymentMethod})',
-              invoice.payment.paidAmount,
-              color: Colors.blue,
-            ),
-            _buildAmountRow(
-              'Balance Due',
-              invoice.payment.balanceAmount,
-              color: invoice.payment.balanceAmount > 0
-                  ? Colors.red
-                  : Colors.green,
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: invoice.payment.balanceAmount > 0
+                    ? AppTheme.unpaid.withOpacity(0.08)
+                    : AppTheme.paid.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(AppTheme.radiusM),
+              ),
+              child: Column(
+                children: [
+                  _buildAmountRow(
+                    'Paid (${invoice.payment.paymentMethod})',
+                    invoice.payment.paidAmount,
+                    color: AppTheme.paid,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        invoice.payment.balanceAmount > 0
+                            ? 'Balance Due'
+                            : 'Fully Paid',
+                        style: TextStyle(
+                          color: invoice.payment.balanceAmount > 0
+                              ? AppTheme.unpaid
+                              : AppTheme.paid,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        invoice.payment.balanceAmount > 0
+                            ? '\u20B9${invoice.payment.balanceAmount.toStringAsFixed(2)}'
+                            : '\u2713',
+                        style: TextStyle(
+                          color: invoice.payment.balanceAmount > 0
+                              ? AppTheme.unpaid
+                              : AppTheme.paid,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -359,5 +429,123 @@ class InvoiceDetailsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildUpiQrCard(
+    BuildContext context,
+    BusinessModel? business,
+    InvoiceModel invoice,
+  ) {
+    final upiId = business?.upiId;
+    if (upiId == null || upiId.isEmpty) return const SizedBox.shrink();
+    if (invoice.payment.balanceAmount <= 0) return const SizedBox.shrink();
+    final amount = InvoicePdfService.qrAmount(invoice);
+    final link = InvoicePdfService.buildUpiLink(
+      upiId: upiId,
+      payeeName: business!.businessName,
+      amount: amount,
+      note: invoice.invoiceNumber,
+    );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Text(
+              'Scan to Pay - UPI',
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            QrImageView(data: link, version: QrVersions.auto, size: 180),
+            const SizedBox(height: 8),
+            Text(
+              '\u20B9${amount.toStringAsFixed(2)} - $upiId',
+              style: const TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBillActions(
+    BuildContext context,
+    BusinessModel? business,
+    InvoiceModel invoice,
+  ) {
+    final fileName =
+        '${invoice.invoiceNumber.isNotEmpty ? invoice.invoiceNumber : 'invoice'}.pdf';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () => _runPdfAction(context, () async {
+                  final bytes = await InvoicePdfService.buildInvoicePdf(
+                    invoice: invoice,
+                    business: business,
+                  );
+                  await Printing.sharePdf(bytes: bytes, filename: fileName);
+                }),
+                icon: const Icon(Icons.share),
+                label: const Text('Share Bill'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _runPdfAction(context, () async {
+                  await Printing.layoutPdf(
+                    name: fileName,
+                    onLayout: (_) => InvoicePdfService.buildInvoicePdf(
+                      invoice: invoice,
+                      business: business,
+                    ),
+                  );
+                }),
+                icon: const Icon(Icons.print),
+                label: const Text('Print A4'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () => _runPdfAction(context, () async {
+            await Printing.layoutPdf(
+              name: fileName,
+              onLayout: (_) => InvoicePdfService.buildInvoicePdf(
+                invoice: invoice,
+                business: business,
+                thermal: true,
+              ),
+            );
+          }),
+          icon: const Icon(Icons.receipt_long),
+          label: const Text('Thermal Print (80mm)'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _runPdfAction(
+    BuildContext context,
+    Future<void> Function() action,
+  ) async {
+    try {
+      await action();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('PDF failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
